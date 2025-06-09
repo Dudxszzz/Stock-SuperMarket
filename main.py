@@ -2,8 +2,6 @@ import pandas as pd
 import sqlite3
 import os
 
-db = 'estoque.db'
-
 def create_database(db):
     try:
         with sqlite3.connect(db) as conn:
@@ -26,7 +24,7 @@ def create_database(db):
     except sqlite3.Error as e:
         print(f"Erro no banco de dados: {e}")
 
-def insert_database(nome, codigo, preco, quantidade, categoria):
+def insert_database(nome, codigo, preco, quantidade, categoria, db):
     try:
         with sqlite3.connect(db)as conn:
             cursor = conn.cursor()
@@ -36,10 +34,13 @@ def insert_database(nome, codigo, preco, quantidade, categoria):
             VALUES(?,?,?,?,?)
             """, (nome, codigo, preco, quantidade, categoria))
             conn.commit()
+            return True
     except sqlite3.IntegrityError:
         print("Erro: Código do produto já existe no banco de dados.")
+        return False
     except sqlite3.Error as e:
         print(f"Erro no banco de dados: {e}")
+        return False
 
 def interface():
     print()
@@ -49,7 +50,7 @@ def interface():
 
     return 0
 
-def cadastro_produto():
+def cadastro_produto(db):
     while True:    
         print("\n===== Cadastro de Produto =====\n")
         print("-"*23)
@@ -69,11 +70,12 @@ def cadastro_produto():
                     quantidade_produto = int(input("Qual é a quantidade no estoque: "))
                     categoria_produto = input("Em qual categoria: ").lower()
 
-                    insert_database(nome_produto, code_produto, preco_produto, quantidade_produto, categoria_produto)
-
+                    if insert_database(nome_produto, code_produto, preco_produto, quantidade_produto, categoria_produto, db):
+                        print(f"\nProduto {nome_produto} cadastrado com sucesso!\n")
+                    else:
+                        print("Falha ao cadastrar produto")
                 except ValueError:
                     print("Erro: Código e quantidade devem ser inteiros, e preço deve ser um número decimal.")
-                print(f"Produto {nome_produto} cadastrado com sucesso!\n")
             elif opcao == 2:
                 break
             else:
@@ -81,43 +83,119 @@ def cadastro_produto():
         else:
             print("Entrada inválida! Digite um número.")
     return None
-
-def atualiza_estoque():
+def gerenciar_produto(db):
     while True:
-        print("\n====== Atualização de Estoque Produto ======\n")
+        print("\n====== Gerenciamento de Produto ======\n")
         print("-"*23)
-        print("1. Digite o código do produto\n2. Voltar")
+        print("1. Atualizar estoque\n2. Remover Produto\n3. Voltar")
         print("-"*23)
         opcao = int(input("Escolha uma opção: "))
-        
+
         if opcao == 1:
-            codigo_produto = input("Digite o código do produto: ")
-            nova_quantidade = int(input(f"Qual é a nova quantidade em estoque? "))
-            try:
-                with sqlite3.connect(db) as conn:
-                    cursor = conn.cursor()
-                    cursor.execute("UPDATE estoque SET quantidade = ? WHERE codigo = ?", (nova_quantidade, codigo_produto))
-                    conn.commit()
+            def atualiza_estoque(db):
+                while True:
+                    print("\n====== Atualização de Estoque Produto ======\n")
+                    print("-"*23)
+                    print("1. Digite o código do produto\n2. Voltar")
+                    print("-"*23)
 
-                    cursor.execute("SELECT * FROM estoque WHERE codigo = ?", (codigo_produto,))
-                    produto = cursor.fetchone() #fetchone serve para apenas um resultado
+                    try:
+                        opcao = int(input("Escolha uma opção: "))
+                        if opcao == 1:
+                            try:
+                                codigo_produto = input("Digite o código do produto: ")
+                                if not codigo_produto.isdigit():
+                                    print("O código deve ser númerico")
+                                    continue
 
-                if produto:
-                    print("=== Produto Atualizado! ===")
-                    print(f"Nome: {produto[1]}, código: {produto[2]}, Preço: {produto[3]}, Quantidade: {produto[4]}, Categoria: {produto[5]}")
-                else:
-                    print("Produto não encontrado.")
-            except sqlite3.OperationalError as e:
-                print(f"Erro operacional: {e} (verifique se o banco e a tabela existem)")
-            except sqlite3.Error as e:
-                print(f"Erro no banco de dados: {e}")
-        elif opcao == 2:
-            print("Voltando ao menu principal...\n")
+                                with sqlite3.connect(db) as conn:
+                                    cursor = conn.cursor()
+                                    cursor.execute("SELECT nome, quantidade FROM estoque WHERE codigo = ?", (codigo_produto,))
+                                    produto = cursor.fetchone()
+
+                                    if not produto:
+                                        print("Produto não encontrado!")
+                                        continue
+                                    
+                                    nome_produto, quantidade_atual = produto
+                                    print(f"\nProduto encontrado: {nome_produto}")
+                                    print(f"Quantidade atual: {quantidade_atual}")
+
+                                    try:
+                                        nova_quantidade = int(input("Nova quantidade em estoque: "))
+                                    except ValueError:
+                                        print("A quantidade deve ser númerica!")
+                                        continue
+
+                                    confirmacao = input(f"Confirmar alteração para {nova_quantidade} unidades? (s/n): ").lower()
+
+                                    if confirmacao == 's':
+                                        cursor.execute("UPDATE estoque SET quantidade = ? WHERE codigo = ?", (nova_quantidade, codigo_produto))
+                                        conn.commit()
+                                        print("\n=== Estoque atualizado com sucesso! ===")
+
+                                        cursor.execute("SELECT nome, codigo, quantidade FROM estoque WHERE codigo = ?", (codigo_produto,))
+                                        updated = cursor.fetchone()
+
+                                        print(f"O produto {updated[0]}, com o código {updated[1]} e nova quantidade {updated[2]}")
+                                    elif confirmacao == 'n':
+                                        print("Opção cancelada")
+                                    else:
+                                        print("Opção inválida! Operação cancelada.")
+                            except sqlite3.Error as e:
+                                print(e)
+                        elif opcao == 2:
+                            print("Retornando ao menu principal...")
+                            break
+                        else:
+                            print("Opção inválida! Tente novamente")
+                    except ValueError:
+                        print("Entrada inválida! Tente novamente")
+            atualiza_estoque(db)
+        elif opcao == 2:       
+            def remover_produto(db):
+                print("\n====== Remover Produto =====\n")
+                while True:
+                    try:
+                        codigo_produto = input("Digite o código do produto: ").strip()
+                        if not codigo_produto.isdigit():
+                            print("O código deve ser númerico")
+                            continue
+
+                        with sqlite3.connect(db) as conn:
+                            cursor = conn.cursor()
+                            cursor.execute("SELECT nome, codigo FROM estoque WHERE codigo = ?", (codigo_produto,))
+                            produto = cursor.fetchone()
+
+                            if not produto:
+                                print("Produto não encontrado!")
+                                continue
+                            
+                            nome_produto, codigo = produto
+                            print(f"\nProduto encontrado: {nome_produto} (Código: {codigo})")
+                            confirmacao = input("Tem certeza que deseja remover este produto? (s/n): ").lower()
+
+                            if confirmacao == 's':
+                                cursor.execute("DELETE FROM estoque WHERE codigo = ?", (codigo_produto,))
+                                conn.commit()
+                                print(f"Produto {nome_produto} removido com sucesso!")
+                                return
+                            elif confirmacao == 'n':
+                                print("Operação cancelada.")
+                                return
+                            else:
+                                print("Opção inválida! Operação cancelada.")
+                    except sqlite3.Error as e:
+                        print(f"Erro ao remover produto: {e}")
+                        return
+            remover_produto(db)
+        elif opcao == 3:
+            print("voltando ao menu principal...")
             return
         else:
-            print("Entrada inválida! Tente novamente.")
+            print("Entrada inválida! Tente novamente")
 
-def consulta_produto():
+def consulta_produto(db):
     while True:
         print("\n====== Busca de Produtos ======\n")
         print("-"*23)
@@ -182,7 +260,7 @@ def consulta_produto():
         else:
             print("Entrada inválida! Digite um número.")
             
-def produtos():
+def produtos(db):
     print()
     print("="*60)
     print(" "*10, "ESTOQUE SUPERMARKET")
@@ -204,7 +282,7 @@ def produtos():
     except sqlite3.Error as e:
         print(f"Erro no banco de dados: {e}")
 
-def planilha(estoque):
+def planilha(estoque, db):
     print("Criando planilha...")
     try:
         with sqlite3.connect(db) as conn:
@@ -229,6 +307,7 @@ def planilha(estoque):
 
 
 def main():
+    db = 'estoque.db'
     estoque = 'estoque.xlsx'
     create_database(db)
 
@@ -236,7 +315,7 @@ def main():
         interface()
         print("")
         print("-"*23)
-        print("1. Cadastrar Produto\n2. Atualizar Estoque\n3. Consulta de produtos\n4. Produtos\n5. Criar Planilha\n6. Sair")
+        print("1. Cadastrar Produto\n2. Gerenciar Produto\n3. Consulta de produtos\n4. Produtos\n5. Criar Planilha\n6. Sair")
         print("-"*23)
 
         opcao = input("Escolha uma opção: ")
@@ -245,15 +324,15 @@ def main():
             opcao = int(opcao)
 
             if opcao == 1:
-                cadastro_produto()
+                cadastro_produto(db)
             elif opcao == 2:
-                atualiza_estoque()
+                gerenciar_produto(db)
             elif opcao == 3:
-                consulta_produto()
+                consulta_produto(db)
             elif opcao == 4:
-                produtos()
+                produtos(db)
             elif opcao == 5:
-                planilha(estoque)
+                planilha(estoque,db)
             elif opcao == 6:
                 print("Fechando supermarket...")
                 break
